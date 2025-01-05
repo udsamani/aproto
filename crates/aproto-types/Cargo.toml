@@ -3,7 +3,11 @@ name = "aproto-types"
 version = "0.0.0"
 edition = "2021"
 
+[dev-dependencies]
+proptest = { version = "1.6.0" }
+
 [dependencies]
 anyhow = { workspace = true }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
+syn = { workspace = true }

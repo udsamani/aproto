@@ -1,16 +1,69 @@
-use core::fmt;
-
+use std::fmt;
 use anyhow::{anyhow, Error};
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::parse::{Parse, ParseStream};
+
+use super::Label;
 
 /// A scalar protobuf field.
 #[allow(unused)]
 #[derive(Clone)]
-pub struct Field {
+pub struct ScalarField {
+    pub name: String,
+    pub label: Option<Label>,
     pub ty: Ty,
-    pub kind: Kind,
     pub tag: u32,
+}
+
+
+impl ScalarField {
+
+    pub fn is_scalar_field(input: &str) -> bool {
+        let ty = Ty::from_str(input);
+        ty.is_ok()
+    }
+}
+
+impl Parse for ScalarField {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+
+        let fork = input.fork();
+        let mut label = None;
+
+        if input.peek(syn::Ident) {
+            let ident = fork.parse::<syn::Ident>()?;
+            label = match ident.to_string().as_str() {
+                "optional" => {
+                    input.parse::<syn::Ident>()?;
+                    Some(Label::Optional)
+                },
+                "repeated" => {
+                    input.parse::<syn::Ident>()?;
+                    Some(Label::Repeated)
+                },
+                _ => None,
+            };
+        }
+
+        let fork = input.fork();
+        if input.peek(syn::Ident) {
+            let ty: syn::Ident = fork.parse()?;
+            if !ScalarField::is_scalar_field(&ty.to_string()) {
+                return Err(syn::Error::new(input.span(), "not a scalar field"));
+            }
+
+            let ty = input.parse::<syn::Ident>()?;
+            let ty = Ty::from_str(&ty.to_string()).map_err(|e| syn::Error::new(input.span(), e.to_string()))?;
+            let name = input.parse::<syn::Ident>()?;
+            let _ = input.parse::<syn::Token![=]>()?;
+            let tag = input.parse::<syn::LitInt>()?;
+            let tag = tag.base10_parse::<u32>()?;
+
+            return Ok(ScalarField { name: name.to_string(), label, ty, tag });
+        }
+        Err(syn::Error::new(input.span(), "not a scalar field"))
+    }
 }
 
 
@@ -131,26 +184,52 @@ pub enum BytesTy {
     Bytes,
 }
 
-#[allow(unused)]
-#[derive(Clone)]
-pub enum Kind {
-    Plain(DefaultValue),
-    Optional(DefaultValue),
-    Required(DefaultValue),
-    Repeated,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Scalar Protobuf field Default Value
-#[allow(unused)]
-#[derive(Clone, Debug)]
-pub enum DefaultValue {
-    F64(f64),
-    F32(f32),
-    I32(i32),
-    I64(i64),
-    U32(u32),
-    U64(u64),
-    Bool(bool),
-    String(String),
-    Bytes(Vec<u8>),
+    use proptest::prelude::*;
+
+
+    proptest! {
+        #[test]
+        fn test_all_scalar_fields_with_optional(
+            name in "[a-z][a-z0-9_]*",
+            ty in prop_oneof!(
+                Just("uint32"),
+                Just("int32"),
+                Just("bool"),
+                Just("string"),
+                Just("double"),
+                Just("float"),
+                Just("uint64"),
+                Just("bytes"),
+            ),
+            tag in 1..=100u32,
+            label in prop_oneof!(
+                Just("optional"),
+                Just("repeated"),
+            ),
+        ) {
+            let name_ident = syn::parse_str::<syn::Ident>(&name).unwrap();
+            let ty_ident = syn::parse_str::<syn::Ident>(&ty).unwrap();
+            let label_ident = syn::parse_str::<syn::Ident>(&label).unwrap();
+
+            let input = quote!(#label_ident #ty_ident #name_ident = #tag);
+            let field = syn::parse2::<ScalarField>(input).unwrap();
+
+            let expected_label = match label {
+                "optional" => Some(Label::Optional),
+                "repeated" => Some(Label::Repeated),
+                _ => None,
+            };
+
+            assert_eq!(field.name, name);
+            assert_eq!(field.tag, tag);
+            assert_eq!(field.ty, Ty::from_str(&ty).unwrap());
+            assert_eq!(field.label, expected_label);
+        }
+
+    }
+
 }
