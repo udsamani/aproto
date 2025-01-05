@@ -5,3 +5,6 @@ members = [
 ]
 
 [workspace.dependencies]
+anyhow = { version = "1.0.95" }
+quote = { version = "1.0.38" }
+proc-macro2 = { version = "1.0.92" }
