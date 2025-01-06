@@ -1,7 +1,7 @@
-use std::fmt;
 use anyhow::{anyhow, Error};
 use proc_macro2::TokenStream;
 use quote::quote;
+use std::fmt;
 use syn::parse::{Parse, ParseStream};
 
 use super::Label;
@@ -16,9 +16,7 @@ pub struct ScalarField {
     pub tag: u32,
 }
 
-
 impl ScalarField {
-
     pub fn is_scalar_field(input: &str) -> bool {
         let ty = Ty::from_str(input);
         ty.is_ok()
@@ -27,7 +25,6 @@ impl ScalarField {
 
 impl Parse for ScalarField {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-
         let fork = input.fork();
         let mut label = None;
 
@@ -37,11 +34,11 @@ impl Parse for ScalarField {
                 "optional" => {
                     input.parse::<syn::Ident>()?;
                     Some(Label::Optional)
-                },
+                }
                 "repeated" => {
                     input.parse::<syn::Ident>()?;
                     Some(Label::Repeated)
-                },
+                }
                 _ => None,
             };
         }
@@ -54,19 +51,37 @@ impl Parse for ScalarField {
             }
 
             let ty = input.parse::<syn::Ident>()?;
-            let ty = Ty::from_str(&ty.to_string()).map_err(|e| syn::Error::new(input.span(), e.to_string()))?;
+            let ty = Ty::from_str(&ty.to_string())
+                .map_err(|e| syn::Error::new(input.span(), e.to_string()))?;
             let name = input.parse::<syn::Ident>()?;
             let _ = input.parse::<syn::Token![=]>()?;
             let tag = input.parse::<syn::LitInt>()?;
             let tag = tag.base10_parse::<u32>()?;
             let _ = input.parse::<syn::Token![;]>()?;
 
-            return Ok(ScalarField { name: name.to_string(), label, ty, tag });
+            return Ok(ScalarField {
+                name: name.to_string(),
+                label,
+                ty,
+                tag,
+            });
         }
         Err(syn::Error::new(input.span(), "not a scalar field"))
     }
 }
 
+#[allow(unused)]
+pub struct ScalarFields(Vec<ScalarField>);
+
+impl Parse for ScalarFields {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut fields = Vec::new();
+        while !input.is_empty() {
+            fields.push(input.parse::<ScalarField>()?);
+        }
+        Ok(Self(fields))
+    }
+}
 
 #[allow(unused)]
 #[derive(Clone, PartialEq, Eq)]
@@ -146,7 +161,6 @@ impl Ty {
             Ty::String => quote!(String),
             Ty::Bytes(..) => quote!(&[u8]),
         }
-
     }
 
     /// Returns the type as it appears in protobuf field declarations
@@ -186,15 +200,13 @@ impl Parse for Ty {
                 Ok(ty) => {
                     input.parse::<syn::Ident>()?;
                     return Ok(ty);
-                },
+                }
                 Err(e) => return Err(syn::Error::new(ident.span(), e.to_string())),
             }
-
         }
         Err(syn::Error::new(input.span(), "not a scalar field"))
     }
 }
-
 
 #[allow(unused)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -249,4 +261,53 @@ mod tests {
 
     }
 
+    proptest! {
+        #[test]
+        fn test_multiple_scalar_fields(
+            num_fields in 1..100usize,
+            names in prop::collection::vec("[a-z][a-z0-9_]*", 100..=100),
+            ty in prop::collection::vec(prop_oneof!(
+                Just("uint32"),
+                Just("int32"),
+                Just("bool"),
+                Just("string"),
+                Just("double"),
+                Just("float"),
+                Just("uint64"),
+                Just("bytes"),
+            ), 100..=100),
+            tags in prop::collection::vec(1..500u32, 100..=100),
+            labels in prop::collection::vec(prop_oneof!(
+                Just("optional"),
+                Just("repeated"),
+            ), 100..=100),
+        ){
+            let names = &names[..num_fields];
+            let tags = &tags[..num_fields];
+            let labels = &labels[..num_fields];
+            let tys = &ty[..num_fields];
+
+            let name_idents: Vec<_> = names.iter().map(|n| syn::parse_str::<syn::Ident>(n).unwrap()).collect();
+            let ty_idents: Vec<_> = tys.iter().map(|t| syn::parse_str::<syn::Ident>(t).unwrap()).collect();
+            let label_idents: Vec<_> = labels.iter().map(|l| syn::parse_str::<syn::Ident>(l).unwrap()).collect();
+
+            let input = quote!(
+                #( #label_idents #ty_idents #name_idents = #tags; )*
+            );
+            let scalar_fields = syn::parse2::<ScalarFields>(input).unwrap();
+            assert_eq!(scalar_fields.0.len(), num_fields);
+
+            for (i, field) in scalar_fields.0.iter().enumerate() {
+                let expected_label = match labels[i] {
+                    "optional" => Some(Label::Optional),
+                    "repeated" => Some(Label::Repeated),
+                    _ => None,
+                };
+                assert_eq!(field.name, names[i]);
+                assert_eq!(field.tag, tags[i]);
+                assert_eq!(field.ty, Ty::from_str(tys[i]).unwrap());
+                assert_eq!(field.label, expected_label);
+            }
+        }
+    }
 }
