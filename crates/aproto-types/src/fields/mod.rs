@@ -9,7 +9,7 @@ pub enum Field {
     /// A scalar protobuf field.
     Scalar(scalar::ScalarField),
     /// A message protobuf field.
-    Message(message::Field),
+    Message(message::MessageField),
     /// A map protobuf field.
     Map(map::MapField),
 }
@@ -22,4 +22,15 @@ pub enum Label {
     Optional,
     /// A repeated field.
     Repeated,
+}
+
+#[allow(clippy::should_implement_trait)]
+impl Label {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "optional" => Some(Self::Optional),
+            "repeated" => Some(Self::Repeated),
+            _ => None,
+        }
+    }
 }
