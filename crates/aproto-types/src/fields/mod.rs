@@ -11,7 +11,7 @@ pub enum Field {
     /// A message protobuf field.
     Message(message::Field),
     /// A map protobuf field.
-    Map(map::Field),
+    Map(map::MapField),
 }
 
 

@@ -59,6 +59,7 @@ impl Parse for ScalarField {
             let _ = input.parse::<syn::Token![=]>()?;
             let tag = input.parse::<syn::LitInt>()?;
             let tag = tag.base10_parse::<u32>()?;
+            let _ = input.parse::<syn::Token![;]>()?;
 
             return Ok(ScalarField { name: name.to_string(), label, ty, tag });
         }
@@ -176,6 +177,24 @@ impl fmt::Display for Ty {
     }
 }
 
+impl Parse for Ty {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let fork = input.fork();
+        if fork.peek(syn::Ident) {
+            let ident = fork.parse::<syn::Ident>()?;
+            match Ty::from_str(&ident.to_string()) {
+                Ok(ty) => {
+                    input.parse::<syn::Ident>()?;
+                    return Ok(ty);
+                },
+                Err(e) => return Err(syn::Error::new(ident.span(), e.to_string())),
+            }
+
+        }
+        Err(syn::Error::new(input.span(), "not a scalar field"))
+    }
+}
+
 
 #[allow(unused)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -187,9 +206,7 @@ pub enum BytesTy {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use proptest::prelude::*;
-
 
     proptest! {
         #[test]
@@ -215,7 +232,7 @@ mod tests {
             let ty_ident = syn::parse_str::<syn::Ident>(&ty).unwrap();
             let label_ident = syn::parse_str::<syn::Ident>(&label).unwrap();
 
-            let input = quote!(#label_ident #ty_ident #name_ident = #tag);
+            let input = quote!(#label_ident #ty_ident #name_ident = #tag;);
             let field = syn::parse2::<ScalarField>(input).unwrap();
 
             let expected_label = match label {
