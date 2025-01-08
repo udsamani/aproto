@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use syn::parse::{Parse, ParseStream};
 
 mod map;
@@ -22,17 +24,32 @@ pub struct Fields(Vec<Field>);
 impl Parse for Fields {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut fields = Vec::new();
+        let mut used_tags = HashSet::new();
 
         while !input.is_empty() {
+            let proto_field: Field;
             if let Ok(field) = input.parse::<scalar::ScalarField>() {
-                fields.push(Field::Scalar(field));
+                proto_field = Field::Scalar(field);
             } else if let Ok(field) = input.parse::<map::MapField>() {
-                fields.push(Field::Map(field));
+                proto_field = Field::Map(field);
             } else if let Ok(field) = input.parse::<message::MessageField>() {
-                fields.push(Field::Message(field));
+                proto_field = Field::Message(field);
             } else {
                 return Err(syn::Error::new(input.span(), "expected a protobuf field"));
             }
+
+            let tag = match &proto_field {
+                Field::Scalar(field) => field.tag,
+                Field::Map(field) => field.tag,
+                Field::Message(field) => field.tag,
+            };
+
+            if used_tags.contains(&tag) {
+                return Err(syn::Error::new(input.span(), "duplicate tag"));
+            }
+            used_tags.insert(tag);
+
+            fields.push(proto_field);
         }
         Ok(Fields(fields))
     }
@@ -63,11 +80,23 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use quote::quote;
+    use utils::{is_protobuf_reserve_key_word, is_rust_reserve_key_word};
 
     proptest! {
         #[test]
         fn test_mix_fields(
-            (num_fields, field_types, tags, names, labels, scalar_types, message_types) in (1..=10usize).prop_flat_map(|num_fields| {
+            (num_fields, field_types, names, labels, scalar_types, message_types) in (1..=100usize).prop_flat_map(|num_fields| {
+
+                let is_valid_name = |name: &str| {
+                    !is_protobuf_reserve_key_word(name) &&
+                    !is_rust_reserve_key_word(name) &&
+                    name.chars().next().map_or(false, |c| c.is_ascii_alphabetic()) &&
+                    name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                };
+
+                let valid_name_strategy = "[a-zA-Z][a-zA-Z0-9_]*"
+                    .prop_filter("filtered out reserved words", move |s| is_valid_name(&s.clone()));
+
                 (
                     Just(num_fields),
                     prop::collection::vec(prop_oneof![
@@ -75,8 +104,7 @@ mod tests {
                         "message",
                         "map"
                     ], num_fields),
-                    prop::collection::vec(1..=100u32, num_fields),
-                    prop::collection::vec("[a-zA-Z][a-zA-Z0-9_]*", num_fields),
+                    prop::collection::vec(valid_name_strategy.clone(), num_fields),
                     prop::collection::vec(prop_oneof![
                         Just("optional").prop_map(Some),
                         Just("repeated").prop_map(Some),
@@ -91,7 +119,7 @@ mod tests {
                         "string",
                         "bytes",
                     ], num_fields),
-                    prop::collection::vec("[A-Z][a-zA-Z0-9]*", num_fields),
+                    prop::collection::vec(valid_name_strategy, num_fields),
                 )
             })
         ) {
@@ -99,7 +127,7 @@ mod tests {
             let mut tokens = quote!();
             for i in 0..num_fields {
                 let field_type = &field_types[i];
-                let tag = tags[i];
+                let tag = i as u32;
                 let name = names[i].clone();
                 let label = labels[i].clone();
                 let scalar_type = &scalar_types[i];
@@ -144,7 +172,7 @@ mod tests {
             for (i, field) in fields.0.iter().enumerate() {
                 match field {
                     Field::Scalar(scalar) => {
-                        assert_eq!(scalar.tag, tags[i]);
+                        assert_eq!(scalar.tag, i as u32);
                         assert_eq!(scalar.name, names[i]);
                         assert_eq!(scalar.ty, scalar::Ty::from_str(&scalar_types[i]).unwrap());
                         if let Some(label) = labels[i] {
@@ -154,7 +182,7 @@ mod tests {
                         }
                     },
                     Field::Message(message) => {
-                        assert_eq!(message.tag, tags[i]);
+                        assert_eq!(message.tag, i as u32);
                         assert_eq!(message.name, names[i]);
                         if let Some(label) = labels[i] {
                             assert_eq!(message.label, Label::from_str(label));
@@ -164,7 +192,7 @@ mod tests {
                         assert_eq!(message.ty, message_types[i]);
                     },
                     Field::Map(map) => {
-                        assert_eq!(map.tag, tags[i]);
+                        assert_eq!(map.tag, i as u32);
                         assert_eq!(map.name, names[i]);
                         assert_eq!(map.key_ty, scalar::Ty::from_str(&scalar_types[i]).unwrap());
                     },

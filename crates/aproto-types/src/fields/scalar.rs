@@ -4,7 +4,7 @@ use quote::quote;
 use std::fmt;
 use syn::parse::{Parse, ParseStream};
 
-use super::{utils::parse_label, Label};
+use super::{utils::{is_protobuf_reserve_key_word, parse_label}, Label};
 
 /// A scalar protobuf field.
 #[allow(unused)]
@@ -42,6 +42,9 @@ impl Parse for ScalarField {
             let ty = Ty::from_str(&ty.to_string())
                 .map_err(|e| syn::Error::new(input.span(), e.to_string()))?;
             let name = input.parse::<syn::Ident>()?;
+            if is_protobuf_reserve_key_word(&name.to_string()) {
+                return Err(syn::Error::new(input.span(), "reserved keyword"));
+            }
             let _ = input.parse::<syn::Token![=]>()?;
             let tag = input.parse::<syn::LitInt>()?;
             let tag = tag.base10_parse::<u32>()?;
@@ -205,6 +208,8 @@ pub enum BytesTy {
 
 #[cfg(test)]
 mod tests {
+    use crate::fields::utils::{is_rust_reserve_key_word, is_protobuf_reserve_key_word};
+
     use super::*;
     use proptest::prelude::*;
 
@@ -252,24 +257,39 @@ mod tests {
     proptest! {
         #[test]
         fn test_multiple_scalar_fields(
-            num_fields in 1..100usize,
-            names in prop::collection::vec("[a-z][a-z0-9_]*", 100..=100),
-            ty in prop::collection::vec(prop_oneof!(
-                Just("uint32"),
-                Just("int32"),
-                Just("bool"),
-                Just("string"),
-                Just("double"),
-                Just("float"),
-                Just("uint64"),
-                Just("bytes"),
-            ), 100..=100),
-            tags in prop::collection::vec(1..500u32, 100..=100),
-            labels in prop::collection::vec(prop_oneof!(
-                Just("optional"),
-                Just("repeated"),
-            ), 100..=100),
-        ){
+            (num_fields, names, ty, tags, labels) in (1..100usize).prop_flat_map(|num_fields| {
+                // Reuse the same name validation strategy
+                let is_valid_name = |name: &str| {
+                    !is_protobuf_reserve_key_word(name) &&
+                    !is_rust_reserve_key_word(name) &&
+                    name.chars().next().map_or(false, |c| c.is_ascii_alphabetic()) &&
+                    name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                };
+
+                let valid_name_strategy = "[a-zA-Z][a-zA-Z0-9_]*"
+                    .prop_filter("filtered out reserved words", move |s| is_valid_name(&s.clone()));
+
+                (
+                    Just(num_fields),
+                    prop::collection::vec(valid_name_strategy, 100..=100),
+                    prop::collection::vec(prop_oneof![
+                        Just("uint32"),
+                        Just("int32"),
+                        Just("bool"),
+                        Just("string"),
+                        Just("double"),
+                        Just("float"),
+                        Just("uint64"),
+                        Just("bytes"),
+                    ], 100..=100),
+                    prop::collection::vec(1..500u32, 100..=100),
+                    prop::collection::vec(prop_oneof![
+                        Just("optional"),
+                        Just("repeated"),
+                    ], 100..=100),
+                )
+            })
+        ) {
             let names = &names[..num_fields];
             let tags = &tags[..num_fields];
             let labels = &labels[..num_fields];
