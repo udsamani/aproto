@@ -5,7 +5,7 @@ use syn::parse::{Parse, ParseStream};
 mod map;
 mod message;
 mod scalar;
-mod utils;
+pub mod utils;
 
 #[allow(unused)]
 #[derive(Clone)]
@@ -19,7 +19,7 @@ pub enum Field {
 }
 
 #[allow(unused)]
-pub struct Fields(Vec<Field>);
+pub struct Fields(pub Vec<Field>);
 
 impl Parse for Fields {
     fn parse(input: ParseStream) -> syn::Result<Self> {
