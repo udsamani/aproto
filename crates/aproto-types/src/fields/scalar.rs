@@ -4,7 +4,7 @@ use quote::quote;
 use std::fmt;
 use syn::parse::{Parse, ParseStream};
 
-use super::Label;
+use super::{utils::parse_label, Label};
 
 /// A scalar protobuf field.
 #[allow(unused)]
@@ -26,28 +26,16 @@ impl ScalarField {
 impl Parse for ScalarField {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let fork = input.fork();
-        let mut label = None;
+        let label = parse_label(&fork)?;
 
-        if input.peek(syn::Ident) {
-            let ident = fork.parse::<syn::Ident>()?;
-            label = match ident.to_string().as_str() {
-                "optional" => {
-                    input.parse::<syn::Ident>()?;
-                    Some(Label::Optional)
-                }
-                "repeated" => {
-                    input.parse::<syn::Ident>()?;
-                    Some(Label::Repeated)
-                }
-                _ => None,
-            };
-        }
-
-        let fork = input.fork();
-        if input.peek(syn::Ident) {
+        if fork.peek(syn::Ident) {
             let ty: syn::Ident = fork.parse()?;
             if !ScalarField::is_scalar_field(&ty.to_string()) {
                 return Err(syn::Error::new(input.span(), "not a scalar field"));
+            }
+
+            if label.is_some() {
+                input.parse::<syn::Ident>()?;
             }
 
             let ty = input.parse::<syn::Ident>()?;

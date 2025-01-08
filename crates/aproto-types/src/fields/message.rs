@@ -2,7 +2,6 @@ use syn::parse::{Parse, ParseStream};
 
 use super::Label;
 
-
 #[allow(unused)]
 #[derive(Clone)]
 pub struct MessageField {
@@ -29,7 +28,12 @@ impl Parse for MessageField {
             let tag = input.parse::<syn::LitInt>()?.base10_parse::<u32>()?;
             input.parse::<syn::Token![;]>()?;
 
-            return Ok(Self { name: name.to_string(), ty: ty.to_string(), label, tag });
+            return Ok(Self {
+                name: name.to_string(),
+                ty: ty.to_string(),
+                label,
+                tag,
+            });
         }
 
         Err(syn::Error::new(input.span(), "expected message field"))
@@ -39,8 +43,8 @@ impl Parse for MessageField {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quote::quote;
     use proptest::prelude::*;
+    use quote::quote;
 
     proptest! {
     #[test]

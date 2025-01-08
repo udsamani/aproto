@@ -2,7 +2,6 @@ use syn::parse::{Parse, ParseStream};
 
 use super::scalar;
 
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapField {
     pub name: String,
@@ -18,7 +17,6 @@ pub enum ValueTy {
     Message(String),
 }
 
-
 impl Parse for ValueTy {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let fork = input.fork();
@@ -31,20 +29,24 @@ impl Parse for ValueTy {
             let ident = input.parse::<syn::Ident>()?;
             return Ok(ValueTy::Message(ident.to_string()));
         }
-        Err(syn::Error::new(input.span(), "not a correct value type for map field"))
+        Err(syn::Error::new(
+            input.span(),
+            "not a correct value type for map field",
+        ))
     }
 }
 
-
 impl Parse for MapField {
-
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let fork = input.fork();
 
         if fork.peek(syn::Ident) {
             let map_kw = fork.parse::<syn::Ident>()?;
             if map_kw.to_string().as_str() != "map" {
-                return Err(syn::Error::new(map_kw.span(), "expected map keyword for map field"));
+                return Err(syn::Error::new(
+                    map_kw.span(),
+                    "expected map keyword for map field",
+                ));
             }
 
             input.parse::<syn::Ident>()?;
@@ -68,7 +70,6 @@ impl Parse for MapField {
                 value_ty,
                 tag: tag.base10_parse::<u32>().unwrap(),
             });
-
         }
 
         Err(syn::Error::new(input.span(), "not a map field"))
