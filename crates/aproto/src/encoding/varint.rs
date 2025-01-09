@@ -4,7 +4,7 @@ use bytes::BufMut;
 
 #[allow(unused)]
 #[inline]
-pub fn encode(mut value: u64, buf: &mut impl BufMut) {
+pub fn encode_varint(mut value: u64, buf: &mut impl BufMut) {
     // Potential max size for varint is 10 bytes
     for _ in 0..10 {
         if value < 0x80 {
@@ -39,12 +39,12 @@ mod tests {
         fn check(value: u64, encoded: &[u8]) {
             // Small buffer.
             let mut buf = Vec::with_capacity(1);
-            encode(value, &mut buf);
+            encode_varint(value, &mut buf);
             assert_eq!(buf, encoded);
 
             // Large buffer.
             let mut buf = Vec::with_capacity(100);
-            encode(value, &mut buf);
+            encode_varint(value, &mut buf);
             assert_eq!(buf, encoded);
 
             assert_eq!(encoded_len(value), encoded.len());

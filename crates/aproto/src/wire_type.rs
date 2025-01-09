@@ -1,4 +1,4 @@
-use crate::error::AprotoError;
+use aproto_types::error::AprotoError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(unused)]

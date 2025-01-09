@@ -1,15 +1,15 @@
+pub mod error;
 mod fields;
 
+use crate::fields::utils::is_protobuf_reserve_key_word;
 pub use fields::*;
 use syn::parse::{Parse, ParseStream};
-use crate::fields::utils::is_protobuf_reserve_key_word;
 
 #[allow(unused)]
 pub struct ProtobufMessageDescriptor {
     pub name: String,
-    pub fields: Fields
+    pub fields: Fields,
 }
-
 
 impl Parse for ProtobufMessageDescriptor {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -24,7 +24,10 @@ impl Parse for ProtobufMessageDescriptor {
         let content;
         syn::braced!(content in input);
         let fields = content.parse::<Fields>()?;
-        Ok(Self { name: name.to_string(), fields })
+        Ok(Self {
+            name: name.to_string(),
+            fields,
+        })
     }
 }
 
@@ -32,7 +35,6 @@ impl Parse for ProtobufMessageDescriptor {
 mod tests {
     use super::*;
     use quote::quote;
-
 
     #[test]
     pub fn test_parse_message_descriptor() {
@@ -48,5 +50,4 @@ mod tests {
         assert_eq!(message.name, "TestMessage");
         assert_eq!(message.fields.0.len(), 4);
     }
-
 }

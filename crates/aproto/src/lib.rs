@@ -1,4 +1,2 @@
-pub mod error;
-mod varint;
+mod encoding;
 mod wire_type;
-

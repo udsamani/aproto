@@ -3,6 +3,9 @@ name = "aproto"
 version = "0.0.0"
 edition = "2021"
 
+
 [dependencies]
 bytes = { workspace = true }
-thiserror = { workspace = true }
+syn = { workspace = true }
+aproto-types = { workspace = true }
+aproto-macros = { workspace = true }
